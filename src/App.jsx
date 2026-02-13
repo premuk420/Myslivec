@@ -18,8 +18,12 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  
+  // Zjistíme, jestli jsme zrovna na stránce Login
+  // (Ošetřujeme malá/velká písmena pro jistotu)
+  const isLoginPage = window.location.pathname.toLowerCase() === '/login';
 
-  // Show loading spinner while checking app public settings or auth
+  // 1. Loading spinner
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -28,18 +32,17 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
-  if (authError) {
+  // 2. Chyby přihlášení - ALE POUZE POKUD NEJSME NA LOGINU
+  if (authError && !isLoginPage) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
       navigateToLogin();
-      return null;
+      return null; // Tady to dřív skončilo bílou obrazovkou
     }
   }
 
-  // Render the main app
+  // 3. Vykreslení aplikace
   return (
     <Routes>
       <Route path="/" element={
@@ -63,9 +66,7 @@ const AuthenticatedApp = () => {
   );
 };
 
-
 function App() {
-
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
