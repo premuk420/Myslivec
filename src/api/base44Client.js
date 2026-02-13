@@ -111,7 +111,11 @@ export const base44 = {
         return data;
     }
   },
-  
+  appLogs: {
+    logUserInApp: async () => {
+      return { success: true }; // Tato funkce teď nic nedělá, ale už neshodí aplikaci
+    }
+  },
   // Entity
   entities: {
     HuntingGround: new EntityHandler('hunting_grounds'),
