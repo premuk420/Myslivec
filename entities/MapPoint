@@ -1,0 +1,101 @@
+{
+  "name": "MapPoint",
+  "type": "object",
+  "properties": {
+    "ground_id": {
+      "type": "string",
+      "description": "ID honitby"
+    },
+    "name": {
+      "type": "string",
+      "description": "N\u00e1zev bodu (nap\u0159. Kazatelna u buku)"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "high_seat",
+        "pulpit",
+        "feeder",
+        "meeting_point"
+      ],
+      "description": "Typ bodu: posed, kazatelna, krmelec, srazi\u0161t\u011b"
+    },
+    "gps_lat": {
+      "type": "number",
+      "description": "GPS \u0161\u00ed\u0159ka"
+    },
+    "gps_lng": {
+      "type": "number",
+      "description": "GPS d\u00e9lka"
+    },
+    "description": {
+      "type": "string",
+      "description": "Popis bodu"
+    }
+  },
+  "required": [
+    "ground_id",
+    "name",
+    "type",
+    "gps_lat",
+    "gps_lng"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.member_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

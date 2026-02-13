@@ -1,0 +1,123 @@
+{
+  "name": "GroundMember",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "Email \u010dlena"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Jm\u00e9no \u010dlena"
+    },
+    "ground_id": {
+      "type": "string",
+      "description": "ID honitby"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "member"
+      ],
+      "default": "member",
+      "description": "Role v honitb\u011b"
+    },
+    "permissions": {
+      "type": "string",
+      "enum": [
+        "read_only",
+        "can_reserve",
+        "full_access"
+      ],
+      "default": "can_reserve",
+      "description": "Opr\u00e1vn\u011bn\u00ed: jen \u010dten\u00ed, mo\u017enost rezervace, pln\u00fd p\u0159\u00edstup"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "rejected"
+      ],
+      "default": "active",
+      "description": "Status \u010dlenstv\u00ed"
+    }
+  },
+  "required": [
+    "user_email",
+    "ground_id",
+    "role",
+    "status"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.member_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

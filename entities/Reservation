@@ -1,0 +1,133 @@
+{
+  "name": "Reservation",
+  "type": "object",
+  "properties": {
+    "ground_id": {
+      "type": "string",
+      "description": "ID honitby"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email myslivce"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "Jm\u00e9no myslivce"
+    },
+    "map_point_id": {
+      "type": "string",
+      "description": "ID bodu na map\u011b (nullable pro \u0161oula\u010dku)"
+    },
+    "map_point_name": {
+      "type": "string",
+      "description": "N\u00e1zev bodu"
+    },
+    "custom_gps_lat": {
+      "type": "number",
+      "description": "GPS \u0161\u00ed\u0159ka pro \u0161oula\u010dku"
+    },
+    "custom_gps_lng": {
+      "type": "number",
+      "description": "GPS d\u00e9lka pro \u0161oula\u010dku"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Datum lovu"
+    },
+    "start_time": {
+      "type": "string",
+      "description": "\u010cas za\u010d\u00e1tku (HH:mm)"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "\u010cas konce (HH:mm)"
+    },
+    "note": {
+      "type": "string",
+      "description": "Pozn\u00e1mka (nap\u0159. Lov \u010dern\u00e9 zv\u011b\u0159e)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "cancelled"
+      ],
+      "default": "active",
+      "description": "Status rezervace"
+    }
+  },
+  "required": [
+    "ground_id",
+    "user_email",
+    "date",
+    "start_time",
+    "end_time"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.member_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.user_email": "{{user.email}}"
+        },
+        {
+          "data.ground_id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

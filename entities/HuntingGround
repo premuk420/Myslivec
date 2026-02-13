@@ -1,0 +1,105 @@
+{
+  "name": "HuntingGround",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "N\u00e1zev honitby"
+    },
+    "description": {
+      "type": "string",
+      "description": "Popis honitby"
+    },
+    "owner_email": {
+      "type": "string",
+      "description": "Email vlastn\u00edka/spr\u00e1vce honitby"
+    },
+    "invite_code": {
+      "type": "string",
+      "description": "Unik\u00e1tn\u00ed pozv\u00e1nkov\u00fd k\u00f3d pro p\u0159ipojen\u00ed \u010dlen\u016f"
+    },
+    "center_lat": {
+      "type": "number",
+      "description": "GPS \u0161\u00ed\u0159ka st\u0159edu honitby"
+    },
+    "center_lng": {
+      "type": "number",
+      "description": "GPS d\u00e9lka st\u0159edu honitby"
+    },
+    "boundary_polygon": {
+      "type": "array",
+      "description": "Body polygonu hranice honitby [[lat,lng],...]",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "required": [
+    "name",
+    "owner_email",
+    "invite_code"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": {
+          "$ne": null
+        }
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.owner_email": "{{user.email}}"
+        },
+        {
+          "id": {
+            "$in": "{{user.data.member_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.owner_email": "{{user.email}}"
+        },
+        {
+          "id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.owner_email": "{{user.email}}"
+        },
+        {
+          "id": {
+            "$in": "{{user.data.admin_ground_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
