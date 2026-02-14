@@ -94,40 +94,38 @@ export default function GroundMap() {
 
 const reserveMutation = useMutation({
     mutationFn: async (data) => {
-        // Validace před odesláním
-        if (!data.date || !data.start_time || !data.end_time) {
-            throw new Error("Chybí povinné údaje (datum nebo čas).");
+        // Validace
+        if (!data.start_time || !data.end_time) {
+            throw new Error("Chybí povinné údaje (čas).");
         }
 
-        console.log("Odesílám rezervaci:", data); // Pro kontrolu v konzoli (F12)
+        // DŮLEŽITÉ: Tady oddělíme 'date' od zbytku dat.
+        // 'date' používáme jen ve formuláři, do databáze ho neposíláme!
+        const { date, ...dataToSave } = data;
+
+        console.log("Odesílám rezervaci:", dataToSave);
 
         return base44.entities.Reservation.create({ 
-            ...data, 
+            ...dataToSave, // Pošleme vše KROMĚ date
             ground_id: groundId, 
             user_id: user.id, 
             status: "active",
-            // Ošetření souřadnic
             custom_gps_lat: clickedLatLng ? clickedLatLng[0] : null,
             custom_gps_lng: clickedLatLng ? clickedLatLng[1] : null,
-            // Pokud je vybraný bod, pošleme jeho ID, jinak null
             map_point_id: selectedPoint ? selectedPoint.id : null
         });
     },
     onSuccess: () => {
-      // Úspěch
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
       setSheetOpen(false);
       setSheetMode("none");
       setMapMode("view");
       setClickedLatLng(null);
       setSelectedPoint(null);
-      // Tady by to chtělo toast, pokud ho používáte
-      // toast({ title: "Rezervace vytvořena!" }); 
     },
     onError: (error) => {
-      // CHYBA - Tady to zachytíme a vypíšeme
       console.error("Chyba rezervace:", error);
-      alert(`Chyba při rezervaci: ${error.message}`); // Rychlý alert, abyste hned viděl chybu
+      alert(`Chyba: ${error.message}`);
     }
   });
 
