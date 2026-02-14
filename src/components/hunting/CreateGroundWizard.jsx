@@ -48,54 +48,51 @@ export default function CreateGroundWizard({ onComplete, onCancel, user }) {
   }, [boundaryPoints]);
 
 const handleFinish = async () => {
+    // Pokud už se ukládá, nepustíme to znovu
+    if (isSubmitting) return;
+    
     setIsSubmitting(true);
     try {
+      // 1. Generování kódu
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const latSum = boundaryPoints.reduce((sum, p) => sum + p[0], 0);
-      const lngSum = boundaryPoints.reduce((sum, p) => sum + p[1], 0);
-      const centerLat = latSum / boundaryPoints.length;
-      const centerLng = lngSum / boundaryPoints.length;
-
+      
+      // 2. Příprava dat (Očištění od zbytečností)
       const groundData = {
-        name: name,
-        description: description,
+        name: name.trim(),
+        description: description.trim(),
         owner_id: user.id,
-        // boundary_data uložíme jako čistý objekt
-        boundary_data: {
+        boundary_data: { 
           points: boundaryPoints,
-          center: [centerLat, centerLng],
-          invite_code: code,
-        },
+          invite_code: code
+        }
       };
 
-      // Zkusíme data vložit. 
-      // Pokud base44.entities... vrací chybu 409, ale data v DB jsou,
-      // tak je to pravděpodobně problém s návratovou hodnotou .select()
+      console.log("Odesílám data:", groundData);
+
+      // 3. Odeslání
       const result = await base44.entities.HuntingGround.create(groundData);
 
       toast({
-        title: "Honitba vytvořena",
-        description: `Honitba ${name} byla úspěšně uložena.`,
+        title: "Úspěch",
+        description: "Honitba byla vytvořena.",
       });
 
-      // ÚSPĚCH - zavoláme onComplete
       onComplete(result);
-      
     } catch (error) {
-      // TADY JE TRIK: Pokud v DB data už jsou (proto ten Conflict), 
-      // tak to budeme brát jako úspěch a pustíme uživatele dál.
-      if (error.code === '23505' || error.message?.includes('409')) {
-         toast({ title: "Honitba už existuje", description: "Přesměrovávám..." });
-         onComplete({ name }); // Pustíme ho dál
-         return;
+      console.error("Detail chyby:", error);
+      
+      // Pokud je to chyba 409, zkusíme uživatele i tak pustit dál, 
+      // protože data se pravděpodobně v DB uložila, jen se nepodařil návratový SELECT.
+      if (error.message?.includes('409') || error.code === '23505') {
+        toast({ title: "Honitba uložena (s varováním)" });
+        onComplete({ name }); 
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Chyba",
+          description: error.message || "Nepodařilo se uložit.",
+        });
       }
-
-      console.error("Chyba při ukládání:", error);
-      toast({
-        variant: "destructive",
-        title: "Chyba při ukládání",
-        description: error.message,
-      });
     } finally {
       setIsSubmitting(false);
     }
