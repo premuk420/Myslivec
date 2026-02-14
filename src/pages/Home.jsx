@@ -226,7 +226,11 @@ export default function Home() {
       {/* Wizard */}
       {wizardOpen && (
         <CreateGroundWizard
-          onComplete={(data) => createMutation.mutate(data)}
+          // ZMĚNA: Používáme mutateAsync, abychom počkali na dokončení uložení
+          // Tím se zajistí, že Wizard nezavře okno dřív, než se vytvoří členství
+          onComplete={async (data) => {
+             await createMutation.mutateAsync(data);
+          }}
           onCancel={() => setWizardOpen(false)}
           user={user}
         />
