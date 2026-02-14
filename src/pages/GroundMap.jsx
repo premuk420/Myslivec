@@ -1,24 +1,36 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapContainer, TileLayer, Polygon, Marker, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Polygon, Marker, useMapEvents, Popup } from "react-leaflet";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
-import { ArrowLeft, Loader2, Settings, Calendar, Plus, Info, MapPin, Navigation } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { ArrowLeft, Loader2, Settings, Calendar, Plus, Info, MapPin, Crosshair } from "lucide-react";
 import { format } from "date-fns";
-import { cs } from "date-fns/locale";
-import ReservationForm from "../components/hunting/ReservationForm";
-import AddPointForm from "../components/hunting/AddPointForm";
-import { getMapPointIcon, getTypeLabel } from "../components/hunting/MapPointIcon";
+import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Klikání do mapy
+// Importy našich komponent
+import ReservationForm from "../components/hunting/ReservationForm";
+import AddPointForm from "../components/hunting/AddPointForm";
+import ReservationCard from "../components/hunting/ReservationCard"; // <--- TADY JSME TO PŘIDALI
+import { getMapPointIcon, getTypeLabel } from "../components/hunting/MapPointIcon";
+
+// Ikonka pro custom rezervaci
+const customReservationIcon = L.divIcon({
+  html: `<div class="w-4 h-4 bg-orange-500 rounded-full border-2 border-white shadow-md"></div>`,
+  className: "",
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
 function MapClickHandler({ onClick, mode }) {
   useMapEvents({
     click(e) {
-      if (mode === "addPoint") onClick([e.latlng.lat, e.latlng.lng]);
+      if (mode === "addPoint" || mode === "reserveCustom") {
+        onClick([e.latlng.lat, e.latlng.lng]);
+      }
     },
   });
   return null;
@@ -31,11 +43,10 @@ export default function GroundMap() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // STAVY
   const [user, setUser] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetMode, setSheetMode] = useState("none"); // info | list | pointDetail | reserve | addPoint
-  const [mapMode, setMapMode] = useState("view"); // view | addPoint
+  const [sheetMode, setSheetMode] = useState("none"); 
+  const [mapMode, setMapMode] = useState("view");
   
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [clickedLatLng, setClickedLatLng] = useState(null);
@@ -67,11 +78,11 @@ export default function GroundMap() {
     enabled: !!groundId,
   });
 
+  const customReservations = reservations.filter(r => !r.map_point_id && r.custom_gps_lat);
   const isOwner = user?.id === ground?.owner_id;
-  // TODO: Zde by měla být kontrola i na roli admina ze členství, pro zjednodušení bereme majitele
   const isAdmin = isOwner; 
 
-  // MUTACE
+  // --- MUTACE ---
   const addPointMutation = useMutation({
     mutationFn: (data) => base44.entities.MapPoint.create({ ...data, ground_id: groundId, author_id: user.id }),
     onSuccess: () => {
@@ -82,74 +93,93 @@ export default function GroundMap() {
   });
 
   const reserveMutation = useMutation({
-    mutationFn: (data) => base44.entities.Reservation.create({ ...data, ground_id: groundId, user_id: user.id, status: "active" }),
+    mutationFn: (data) => base44.entities.Reservation.create({ 
+        ...data, 
+        ground_id: groundId, 
+        user_id: user.id, 
+        status: "active",
+        custom_gps_lat: clickedLatLng ? clickedLatLng[0] : null,
+        custom_gps_lng: clickedLatLng ? clickedLatLng[1] : null,
+        map_point_id: selectedPoint ? selectedPoint.id : null
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reservations"] });
       setSheetOpen(false);
       setSheetMode("none");
+      setMapMode("view");
+      setClickedLatLng(null);
+      setSelectedPoint(null);
     }
   });
 
-  // HANDLERY
+  // PŘIDÁNO: Mazání rezervace
+  const deleteReservationMutation = useMutation({
+    mutationFn: (resId) => base44.entities.Reservation.delete(resId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    }
+  });
+
+  // --- HANDLERY ---
   const handleMapClick = (latlng) => {
     if (mapMode === "addPoint") {
         setClickedLatLng(latlng);
         setSheetMode("addPoint");
         setSheetOpen(true);
+    } else if (mapMode === "reserveCustom") {
+        setClickedLatLng(latlng);
+        setSheetMode("reserveCustom");
+        setSheetOpen(true);
     }
   };
 
   const handlePointClick = (point) => {
-    setSelectedPoint(point);
-    setSheetMode("pointDetail");
-    setSheetOpen(true);
+    if (mapMode === "view") {
+        setSelectedPoint(point);
+        setSheetMode("pointDetail");
+        setSheetOpen(true);
+    }
   };
 
-  const openReserveForm = () => {
-    setSheetMode("reserve");
-  };
-
-  // Vykreslování
   if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-green-800" /></div>;
   if (!ground) return <div className="p-10">Honitba nenalezena</div>;
 
   const boundaryPoints = ground.boundary_data?.points || [];
   let center = ground.boundary_data?.center || (boundaryPoints.length > 0 ? boundaryPoints[0] : [49.8, 15.47]);
+  const pointReservations = selectedPoint ? reservations.filter(r => r.map_point_id === selectedPoint.id) : [];
 
-  // Rezervace pro vybraný bod
-  const pointReservations = selectedPoint 
-    ? reservations.filter(r => r.map_point_id === selectedPoint.id) 
-    : [];
-
-  // Je vybraný bod právě teď obsazený?
   const isPointReservedNow = (pointId) => {
     const now = new Date();
     return reservations.some(r => r.map_point_id === pointId && new Date(r.start_time) <= now && new Date(r.end_time) >= now);
   };
 
   return (
-    <div className="h-screen w-full relative flex flex-col bg-gray-100">
+    <div className="h-screen w-full relative flex flex-col bg-gray-100 overflow-hidden">
       
       {/* 1. Horní lišta */}
-      <div className="absolute top-4 left-4 right-4 z-[1000] flex justify-between items-start pointer-events-none">
-        <Link to="/" className="pointer-events-auto">
-            <Button size="icon" className="bg-white text-black hover:bg-gray-100 shadow-lg rounded-full">
+      <div className="absolute top-0 left-0 right-0 z-[1000] p-3 flex items-start justify-between pointer-events-none gap-2">
+         <Link to="/" className="pointer-events-auto shrink-0">
+            <Button size="icon" className="bg-white text-black hover:bg-gray-100 shadow-md rounded-full w-10 h-10">
                 <ArrowLeft className="w-5 h-5" />
             </Button>
-        </Link>
-        <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-2xl shadow-lg pointer-events-auto flex flex-col items-center">
-            <h1 className="font-bold text-sm">{ground.name}</h1>
-            <div className="flex gap-2 text-[10px] text-gray-500">
+         </Link>
+
+         <div className="bg-white/95 backdrop-blur px-4 py-2 rounded-2xl shadow-md pointer-events-auto flex flex-col items-center max-w-[60%] min-w-0">
+            <h1 className="font-bold text-sm truncate w-full text-center">{ground.name}</h1>
+            <div className="flex gap-2 text-[10px] text-gray-500 whitespace-nowrap">
                 <span>{mapPoints.length} bodů</span>
                 <span>•</span>
                 <span>{reservations.length} rezervací</span>
             </div>
-        </div>
-        {isAdmin ? (
-             <Button size="icon" className="pointer-events-auto bg-white text-black hover:bg-gray-100 shadow-lg rounded-full" onClick={() => navigate(`/manage/${groundId}`)}>
-                <Settings className="w-5 h-5" />
-             </Button>
-        ) : <div className="w-10" />} 
+         </div>
+
+         <div className="shrink-0 w-10">
+             {isAdmin && (
+                <Button size="icon" className="pointer-events-auto bg-white text-black hover:bg-gray-100 shadow-md rounded-full w-10 h-10" onClick={() => navigate(`/manage/${groundId}`)}>
+                    <Settings className="w-5 h-5" />
+                </Button>
+             )}
+         </div>
       </div>
 
       {/* 2. Mapa */}
@@ -157,11 +187,7 @@ export default function GroundMap() {
         <MapContainer center={center} zoom={14} className="h-full w-full" zoomControl={false}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
           <MapClickHandler onClick={handleMapClick} mode={mapMode} />
-          
-          {boundaryPoints.length > 2 && (
-            <Polygon positions={boundaryPoints} pathOptions={{ color: "#2D5016", weight: 2, fillOpacity: 0.1 }} />
-          )}
-
+          {boundaryPoints.length > 2 && <Polygon positions={boundaryPoints} pathOptions={{ color: "#2D5016", weight: 2, fillOpacity: 0.1 }} />}
           {mapPoints.map((point) => (
             <Marker 
                 key={point.id} 
@@ -170,158 +196,135 @@ export default function GroundMap() {
                 eventHandlers={{ click: () => handlePointClick(point) }}
             />
           ))}
+          {customReservations.map((res) => (
+              <Marker key={res.id} position={[res.custom_gps_lat, res.custom_gps_lng]} icon={customReservationIcon}>
+                 <Popup><div className="text-center font-bold text-xs">Rezervace (Vlastní)</div></Popup>
+              </Marker>
+          ))}
         </MapContainer>
       </div>
 
       {/* 3. Spodní Menu */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex gap-2">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-auto max-w-[95%]">
          {mapMode === "view" ? (
-             <div className="bg-white/95 backdrop-blur shadow-xl border rounded-full p-1.5 flex gap-1">
-                <Button variant="ghost" className="rounded-full gap-2" onClick={() => { setSheetMode("info"); setSheetOpen(true); }}>
+             <div className="bg-white/95 backdrop-blur shadow-xl border rounded-full p-1.5 flex gap-1 overflow-x-auto no-scrollbar">
+                <Button variant="ghost" className="rounded-full px-3 gap-2 shrink-0" onClick={() => { setSheetMode("info"); setSheetOpen(true); }}>
                     <Info className="w-5 h-5 text-gray-500" />
                 </Button>
-                <Button variant="ghost" className="rounded-full gap-2" onClick={() => { setSheetMode("list"); setSheetOpen(true); }}>
-                    <Calendar className="w-5 h-5 text-gray-500" /> <span className="text-sm font-medium">Rezervace</span>
+                <Button variant="ghost" className="rounded-full px-3 gap-2 shrink-0" onClick={() => { setSheetMode("list"); setSheetOpen(true); }}>
+                    <Calendar className="w-5 h-5 text-gray-500" /> <span className="text-sm font-medium hidden sm:inline">Seznam</span>
+                </Button>
+                <Button className="rounded-full px-4 gap-2 bg-amber-600 hover:bg-amber-700 shrink-0 text-white" onClick={() => { setMapMode("reserveCustom"); setSheetOpen(false); }}>
+                    <Crosshair className="w-5 h-5" /> <span className="text-sm font-medium">Vybrat místo</span>
                 </Button>
                 {isAdmin && (
-                    <Button className="rounded-full gap-2 bg-[#2D5016] hover:bg-[#203a10]" onClick={() => setMapMode("addPoint")}>
-                        <Plus className="w-5 h-5" /> <span className="text-sm font-medium">Bod</span>
+                    <Button variant="ghost" className="rounded-full px-3 gap-2 text-green-700 hover:text-green-800 hover:bg-green-50 shrink-0" onClick={() => setMapMode("addPoint")}>
+                        <Plus className="w-5 h-5" /> <span className="text-sm font-medium hidden sm:inline">Bod</span>
                     </Button>
                 )}
              </div>
          ) : (
-             <Button variant="destructive" className="rounded-full shadow-xl" onClick={() => setMapMode("view")}>
-                 Zrušit vkládání
-             </Button>
+             <div className="flex flex-col items-center gap-2 animate-in slide-in-from-bottom-4">
+                 <div className="bg-black/70 text-white px-3 py-1 rounded-full text-xs mb-1 backdrop-blur">
+                    {mapMode === "addPoint" ? "Klikněte pro vložení bodu" : "Klikněte pro výběr místa rezervace"}
+                 </div>
+                 <Button variant="destructive" className="rounded-full shadow-xl px-6" onClick={() => setMapMode("view")}>Zrušit</Button>
+             </div>
          )}
       </div>
 
-      {/* 4. Sheet (Vysouvací panel) */}
+      {/* 4. Sheet */}
       <Sheet open={sheetOpen} onOpenChange={(o) => { if(!o) { setSheetOpen(false); setMapMode("view"); } }}>
-        <SheetContent side="bottom" className="rounded-t-[20px] max-h-[85vh] overflow-y-auto">
+        <SheetContent side="bottom" className="rounded-t-[20px] max-h-[85vh] overflow-y-auto bg-gray-50">
             
-            {/* DETAIL BODU & REZERVACE */}
-            {sheetMode === "pointDetail" && selectedPoint && (
+            {/* VLASTNÍ REZERVACE */}
+            {sheetMode === "reserveCustom" && clickedLatLng && (
                 <>
-                    <SheetHeader className="text-left space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <SheetTitle className="text-xl font-bold">{selectedPoint.name}</SheetTitle>
-                                <SheetDescription className="text-base">{getTypeLabel(selectedPoint.type)}</SheetDescription>
-                            </div>
-                            <div className="bg-gray-100 p-2 rounded-full">
-                                <MapPin className="w-6 h-6 text-gray-600" />
-                            </div>
-                        </div>
-                        {selectedPoint.description && (
-                            <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
-                                {selectedPoint.description}
-                            </div>
-                        )}
-                    </SheetHeader>
-                    
-                    <div className="my-6 space-y-3">
-                        <h4 className="font-medium text-sm text-gray-500 uppercase">Nadcházející rezervace</h4>
-                        {pointReservations.length === 0 ? (
-                            <p className="text-sm text-gray-400 italic">Tento bod je volný.</p>
-                        ) : (
-                            pointReservations.map(r => (
-                                <div key={r.id} className="flex justify-between items-center text-sm p-2 border rounded">
-                                    <span>{format(new Date(r.start_time), "d.M. HH:mm")}</span>
-                                    <Badge variant="outline">Obsazeno</Badge>
-                                </div>
-                            ))
-                        )}
-                    </div>
-
-                    <SheetFooter className="mt-4">
-                        <Button className="w-full bg-[#2D5016] h-12 text-base" onClick={openReserveForm}>
-                            Rezervovat tento bod
-                        </Button>
-                    </SheetFooter>
+                    <SheetHeader><SheetTitle>Rezervace na mapě</SheetTitle><SheetDescription>GPS: {clickedLatLng[0].toFixed(5)}, {clickedLatLng[1].toFixed(5)}</SheetDescription></SheetHeader>
+                    <div className="mt-4"><ReservationForm customLatLng={clickedLatLng} onSubmit={(data) => reserveMutation.mutate(data)} onCancel={() => setSheetOpen(false)} /></div>
                 </>
             )}
 
-            {/* FORMULÁŘ REZERVACE */}
+            {/* DETAIL BODU */}
+            {sheetMode === "pointDetail" && selectedPoint && (
+                <>
+                    <SheetHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <div><SheetTitle className="text-xl font-bold">{selectedPoint.name}</SheetTitle><SheetDescription>{getTypeLabel(selectedPoint.type)}</SheetDescription></div>
+                        <div className="bg-gray-100 p-2 rounded-full"><MapPin className="w-6 h-6 text-gray-600" /></div>
+                    </SheetHeader>
+                    {selectedPoint.description && <p className="text-sm text-gray-600 bg-white border p-3 rounded-lg mt-2">{selectedPoint.description}</p>}
+                    <div className="mt-6 mb-6"><Button className="w-full bg-[#2D5016] h-12 text-base shadow-md" onClick={() => setSheetMode("reserve")}>Rezervovat tento bod</Button></div>
+                    
+                    <div className="space-y-3">
+                        <h4 className="font-medium text-xs text-gray-400 uppercase tracking-wider">Obsazenost bodu</h4>
+                        {pointReservations.length === 0 ? <p className="text-sm text-gray-400 italic">Zatím žádné rezervace.</p> : 
+                            // Tady taky použijeme karty, pokud chcete, nebo necháme ten mini-seznam
+                            pointReservations.map(res => (
+                                <ReservationCard 
+                                    key={res.id} 
+                                    reservation={res} 
+                                    pointName={selectedPoint.name}
+                                    isOwner={false} // V detailu bodu možná nechceme rušit cizí?
+                                    onCancel={() => {}} 
+                                />
+                            ))
+                        }
+                    </div>
+                </>
+            )}
+
+            {/* REZERVACE BODU */}
             {sheetMode === "reserve" && selectedPoint && (
                 <>
-                    <SheetHeader>
-                        <SheetTitle>Nová rezervace</SheetTitle>
-                        <SheetDescription>Pro bod: {selectedPoint.name}</SheetDescription>
-                    </SheetHeader>
-                    <div className="mt-4">
-                        <ReservationForm 
-                            pointId={selectedPoint.id}
-                            onSubmit={(data) => reserveMutation.mutate({ ...data, map_point_id: selectedPoint.id })}
-                            onCancel={() => setSheetMode("pointDetail")}
-                        />
-                    </div>
+                    <SheetHeader><SheetTitle>Nová rezervace: {selectedPoint.name}</SheetTitle><SheetDescription>Vyberte čas</SheetDescription></SheetHeader>
+                    <div className="mt-4"><ReservationForm pointId={selectedPoint.id} onSubmit={(data) => reserveMutation.mutate({ ...data, map_point_id: selectedPoint.id })} onCancel={() => setSheetMode("pointDetail")} /></div>
                 </>
             )}
 
             {/* PŘIDÁNÍ BODU */}
             {sheetMode === "addPoint" && clickedLatLng && (
                 <>
-                    <SheetHeader>
-                        <SheetTitle>Nový bod</SheetTitle>
-                        <SheetDescription>GPS: {clickedLatLng[0].toFixed(5)}, {clickedLatLng[1].toFixed(5)}</SheetDescription>
-                    </SheetHeader>
-                    <div className="mt-4">
-                        <AddPointForm 
-                            latLng={clickedLatLng}
-                            onSubmit={(data) => addPointMutation.mutate(data)}
-                            onCancel={() => setSheetOpen(false)}
-                        />
-                    </div>
+                    <SheetHeader><SheetTitle>Nový bod</SheetTitle><SheetDescription>GPS: {clickedLatLng[0].toFixed(5)}, {clickedLatLng[1].toFixed(5)}</SheetDescription></SheetHeader>
+                    <div className="mt-4"><AddPointForm latLng={clickedLatLng} onSubmit={(data) => addPointMutation.mutate(data)} onCancel={() => setSheetOpen(false)} /></div>
                 </>
             )}
 
-            {/* INFO */}
-            {sheetMode === "info" && (
-                <>
-                    <SheetHeader>
-                        <SheetTitle>Informace o revíru</SheetTitle>
-                        <SheetDescription>{ground.name}</SheetDescription>
-                    </SheetHeader>
-                    <div className="mt-4 space-y-4">
-                        <p className="text-gray-700">{ground.description || "Bez popisu"}</p>
-                        <div className="flex gap-2">
-                            <a href={`https://mapy.cz/zakladni?q=${center[0]},${center[1]}`} target="_blank" rel="noreferrer" className="flex-1">
-                                <Button variant="outline" className="w-full gap-2"><Navigation className="w-4 h-4"/> Navigovat</Button>
-                            </a>
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {/* SEZNAM REZERVACÍ */}
+            {/* SEZNAM REZERVACÍ (POUŽITÍ RESERVATION CARD) */}
             {sheetMode === "list" && (
                  <>
-                    <SheetHeader>
-                        <SheetTitle>Všechny rezervace</SheetTitle>
-                        <SheetDescription>Přehled obsazenosti v revíru</SheetDescription>
-                    </SheetHeader>
+                    <SheetHeader><SheetTitle>Přehled rezervací</SheetTitle><SheetDescription>Všechny aktivní rezervace v revíru</SheetDescription></SheetHeader>
                     <div className="mt-4 space-y-2">
-                        {reservations.length === 0 ? <p className="text-center text-gray-500">Prázdno</p> : 
-                            reservations.map(res => (
-                                <div key={res.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-2 h-2 rounded-full bg-green-600"></div>
-                                        <div>
-                                            {/* Zde by ideálně mělo být jméno bodu, pokud ho máme v seznamu bodů */}
-                                            <p className="font-medium text-sm">
-                                                {mapPoints.find(p => p.id === res.map_point_id)?.name || "Neznámý bod"}
-                                            </p>
-                                            <p className="text-xs text-gray-500">{format(new Date(res.start_time), "d.M. HH:mm")} - {format(new Date(res.end_time), "HH:mm")}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))
+                        {reservations.length === 0 ? <p className="text-center text-gray-500 py-4">Žádné aktivní rezervace</p> : 
+                            reservations.map(res => {
+                                // Najdeme název bodu pro kartu
+                                const pointName = mapPoints.find(p => p.id === res.map_point_id)?.name;
+                                // Můžu zrušit? Ano, pokud jsem autor rezervace NEBO majitel honitby
+                                const canCancel = isAdmin || res.user_id === user?.id;
+
+                                return (
+                                    <ReservationCard 
+                                        key={res.id}
+                                        reservation={res}
+                                        pointName={pointName}
+                                        canCancel={canCancel}
+                                        onCancel={(id) => {
+                                            if(confirm("Opravdu zrušit rezervaci?")) deleteReservationMutation.mutate(id);
+                                        }}
+                                    />
+                                );
+                            })
                         }
                     </div>
                  </>
             )}
-
+            
+            {/* INFO */}
+            {sheetMode === "info" && (
+                <>
+                    <SheetHeader><SheetTitle>{ground.name}</SheetTitle><SheetDescription>Informace o revíru</SheetDescription></SheetHeader>
+                    <div className="mt-4 text-sm text-gray-600"><p>{ground.description || "Bez popisu"}</p></div>
+                </>
+            )}
         </SheetContent>
       </Sheet>
     </div>
