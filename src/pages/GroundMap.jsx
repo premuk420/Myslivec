@@ -7,14 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { ArrowLeft, Loader2, Settings, Calendar, Plus, Info, MapPin, Crosshair } from "lucide-react";
-import { format } from "date-fns";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 // Importy našich komponent
 import ReservationForm from "../components/hunting/ReservationForm";
 import AddPointForm from "../components/hunting/AddPointForm";
-import ReservationCard from "../components/hunting/ReservationCard"; // <--- TADY JSME TO PŘIDALI
+import ReservationCard from "../components/hunting/ReservationCard";
 import { getMapPointIcon, getTypeLabel } from "../components/hunting/MapPointIcon";
 
 // Ikonka pro custom rezervaci
@@ -53,7 +52,7 @@ export default function GroundMap() {
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
-  // DATA
+  // --- DATA ---
   const { data: ground, isLoading } = useQuery({
     queryKey: ["ground", groundId],
     queryFn: () => base44.entities.HuntingGround.get(groundId),
@@ -78,6 +77,13 @@ export default function GroundMap() {
     enabled: !!groundId,
   });
 
+  // Načtení členů pro jména
+  const { data: members = [] } = useQuery({
+    queryKey: ["groundMembers", groundId],
+    queryFn: () => base44.entities.GroundMember.filter({ ground_id: groundId }),
+    enabled: !!groundId,
+  });
+
   const customReservations = reservations.filter(r => !r.map_point_id && r.custom_gps_lat);
   const isOwner = user?.id === ground?.owner_id;
   const isAdmin = isOwner; 
@@ -92,21 +98,19 @@ export default function GroundMap() {
     }
   });
 
-const reserveMutation = useMutation({
+  const reserveMutation = useMutation({
     mutationFn: async (data) => {
-        // Validace
         if (!data.start_time || !data.end_time) {
             throw new Error("Chybí povinné údaje (čas).");
         }
 
-        // DŮLEŽITÉ: Tady oddělíme 'date' od zbytku dat.
-        // 'date' používáme jen ve formuláři, do databáze ho neposíláme!
+        // Oddělíme 'date', protože ho do DB neposíláme
         const { date, ...dataToSave } = data;
 
         console.log("Odesílám rezervaci:", dataToSave);
 
         return base44.entities.Reservation.create({ 
-            ...dataToSave, // Pošleme vše KROMĚ date
+            ...dataToSave,
             ground_id: groundId, 
             user_id: user.id, 
             status: "active",
@@ -129,7 +133,6 @@ const reserveMutation = useMutation({
     }
   });
 
-  // PŘIDÁNO: Mazání rezervace
   const deleteReservationMutation = useMutation({
     mutationFn: (resId) => base44.entities.Reservation.delete(resId),
     onSuccess: () => {
@@ -205,6 +208,7 @@ const reserveMutation = useMutation({
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
           <MapClickHandler onClick={handleMapClick} mode={mapMode} />
           {boundaryPoints.length > 2 && <Polygon positions={boundaryPoints} pathOptions={{ color: "#2D5016", weight: 2, fillOpacity: 0.1 }} />}
+          
           {mapPoints.map((point) => (
             <Marker 
                 key={point.id} 
@@ -213,6 +217,7 @@ const reserveMutation = useMutation({
                 eventHandlers={{ click: () => handlePointClick(point) }}
             />
           ))}
+          
           {customReservations.map((res) => (
               <Marker key={res.id} position={[res.custom_gps_lat, res.custom_gps_lng]} icon={customReservationIcon}>
                  <Popup><div className="text-center font-bold text-xs">Rezervace (Vlastní)</div></Popup>
@@ -275,16 +280,20 @@ const reserveMutation = useMutation({
                     <div className="space-y-3">
                         <h4 className="font-medium text-xs text-gray-400 uppercase tracking-wider">Obsazenost bodu</h4>
                         {pointReservations.length === 0 ? <p className="text-sm text-gray-400 italic">Zatím žádné rezervace.</p> : 
-                            // Tady taky použijeme karty, pokud chcete, nebo necháme ten mini-seznam
-                            pointReservations.map(res => (
-                                <ReservationCard 
-                                    key={res.id} 
-                                    reservation={res} 
-                                    pointName={selectedPoint.name}
-                                    isOwner={false} // V detailu bodu možná nechceme rušit cizí?
-                                    onCancel={() => {}} 
-                                />
-                            ))
+                            pointReservations.map(res => {
+                                const userName = members.find(m => m.user_id === res.user_id)?.email || "Neznámý lovec";
+                                const canCancel = isAdmin || res.user_id === user?.id;
+                                return (
+                                    <ReservationCard 
+                                        key={res.id} 
+                                        reservation={res} 
+                                        pointName={selectedPoint.name}
+                                        userName={userName}
+                                        canCancel={canCancel} 
+                                        onCancel={(id) => { if(confirm("Opravdu zrušit?")) deleteReservationMutation.mutate(id); }} 
+                                    />
+                                );
+                            })
                         }
                     </div>
                 </>
@@ -313,9 +322,11 @@ const reserveMutation = useMutation({
                     <div className="mt-4 space-y-2">
                         {reservations.length === 0 ? <p className="text-center text-gray-500 py-4">Žádné aktivní rezervace</p> : 
                             reservations.map(res => {
-                                // Najdeme název bodu pro kartu
+                                // Najdeme název bodu
                                 const pointName = mapPoints.find(p => p.id === res.map_point_id)?.name;
-                                // Můžu zrušit? Ano, pokud jsem autor rezervace NEBO majitel honitby
+                                // Najdeme jméno
+                                const userName = members.find(m => m.user_id === res.user_id)?.email || "Neznámý lovec";
+                                // Můžu zrušit?
                                 const canCancel = isAdmin || res.user_id === user?.id;
 
                                 return (
@@ -323,6 +334,7 @@ const reserveMutation = useMutation({
                                         key={res.id}
                                         reservation={res}
                                         pointName={pointName}
+                                        userName={userName}
                                         canCancel={canCancel}
                                         onCancel={(id) => {
                                             if(confirm("Opravdu zrušit rezervaci?")) deleteReservationMutation.mutate(id);
