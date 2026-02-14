@@ -1,72 +1,50 @@
-import React from "react";
 import L from "leaflet";
+import { renderToString } from "react-dom/server";
+import { TreePine, Home, Tent, Crosshair, MapPin } from "lucide-react";
 
-const typeConfig = {
-  high_seat: { color: "#2D5016", emoji: "🪵", label: "Posed" },
-  pulpit: { color: "#6B4226", emoji: "🏗️", label: "Kazatelna" },
-  feeder: { color: "#C4A35A", emoji: "🌾", label: "Krmelec" },
-  meeting_point: { color: "#1E40AF", emoji: "📍", label: "Sraziště" },
+// Pomocná funkce pro vytvoření ikony
+const createIcon = (IconComponent, color, label) => {
+  const iconHtml = renderToString(
+    <div className="relative flex flex-col items-center justify-center -translate-y-6">
+       <div className={`p-2 rounded-full border-2 border-white shadow-md ${color} text-white`}>
+          <IconComponent size={20} />
+       </div>
+       <div className="mt-1 px-2 py-0.5 bg-white/90 backdrop-blur rounded text-[10px] font-bold shadow border border-gray-200 whitespace-nowrap">
+         {label}
+       </div>
+    </div>
+  );
+
+  return L.divIcon({
+    html: iconHtml,
+    className: "custom-leaflet-icon", // Prázdná třída, styly jsou v HTML
+    iconSize: [40, 40],
+    iconAnchor: [20, 40], // Kotva dole uprostřed
+    popupAnchor: [0, -40],
+  });
 };
 
-export function getMapPointIcon(type, isReserved = false) {
-  const config = typeConfig[type] || typeConfig.high_seat;
-  const bgColor = isReserved ? "#DC2626" : config.color;
-  const borderColor = isReserved ? "#991B1B" : "#FFF";
+export const getMapPointIcon = (type, name, isReserved) => {
+  const bg = isReserved ? "bg-red-500" : "bg-[#2D5016]";
+  
+  switch (type) {
+    case "posed": return createIcon(TreePine, bg, name);
+    case "kazatelna": return createIcon(Home, bg, name);
+    case "krmelec": return createIcon(Tent, "bg-amber-600", name);
+    case "srub": return createIcon(Home, "bg-blue-600", name);
+    case "nadhaneci_stanoviste": return createIcon(Crosshair, "bg-slate-600", name);
+    default: return createIcon(MapPin, "bg-gray-500", name);
+  }
+};
 
-  return L.divIcon({
-    className: "custom-map-point",
-    html: `
-      <div style="
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: ${bgColor};
-        border: 3px solid ${borderColor};
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        cursor: pointer;
-        transition: transform 0.2s;
-      ">${config.emoji}</div>
-    `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -20],
-  });
-}
-
-export function getCustomLocationIcon() {
-  return L.divIcon({
-    className: "custom-location-icon",
-    html: `
-      <div style="
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        background: #7C3AED;
-        border: 3px solid #FFF;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        cursor: pointer;
-      ">🎯</div>
-    `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -16],
-  });
-}
-
-export function getTypeLabel(type) {
-  return typeConfig[type]?.label || type;
-}
-
-export function getTypeEmoji(type) {
-  return typeConfig[type]?.emoji || "📍";
-}
-
-export { typeConfig };
+export const getTypeLabel = (type) => {
+  const map = {
+    posed: "Posed",
+    kazatelna: "Kazatelna",
+    krmelec: "Krmelec",
+    srub: "Srub / Chata",
+    nadhaneci_stanoviste: "Stanoviště",
+    jine: "Jiné"
+  };
+  return map[type] || type;
+};
