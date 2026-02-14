@@ -8,6 +8,10 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 
+// Importy stránek přímo, aby to bylo spolehlivější
+import GroundMap from './pages/GroundMap';
+import ManageGround from './pages/ManageGround';
+
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
@@ -22,59 +26,25 @@ const AuthenticatedApp = () => {
   const isLoginPage = window.location.pathname.toLowerCase() === '/login';
 
   if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
+    return <div className="flex h-screen items-center justify-center">Načítám aplikaci...</div>;
   }
 
   if (authError && !isLoginPage) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      navigateToLogin();
-      return null;
-    }
+    if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
+    if (authError.type === 'auth_required') { navigateToLogin(); return null; }
   }
-
-  // Komponenty pro mapu a správu si vytáhneme z konfigurace
-  const GroundMapPage = Pages["GroundMap"];
-  const ManageGroundPage = Pages["ManageGround"];
 
   return (
     <Routes>
-      {/* Hlavní stránka */}
-      <Route path="/" element={
-        <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
-        </LayoutWrapper>
-      } />
-
-      {/* SPECIÁLNÍ TRASY PRO MAPU A SPRÁVU (s ID v URL) */}
-      <Route path="/map/:id" element={
-        <LayoutWrapper currentPageName="GroundMap">
-          <GroundMapPage />
-        </LayoutWrapper>
-      } />
+      <Route path="/" element={<LayoutWrapper currentPageName={mainPageKey}><MainPage /></LayoutWrapper>} />
       
-      <Route path="/manage/:id" element={
-        <LayoutWrapper currentPageName="ManageGround">
-          <ManageGroundPage />
-        </LayoutWrapper>
-      } />
+      {/* TADY JSOU TY DŮLEŽITÉ OPRAVY PRO MAPU A SPRÁVU */}
+      <Route path="/map/:id" element={<LayoutWrapper currentPageName="GroundMap"><GroundMap /></LayoutWrapper>} />
+      <Route path="/manage/:id" element={<LayoutWrapper currentPageName="ManageGround"><ManageGround /></LayoutWrapper>} />
 
-      {/* Ostatní automatické stránky */}
+      {/* Zbytek stránek */}
       {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
+        <Route key={path} path={`/${path}`} element={<LayoutWrapper currentPageName={path}><Page /></LayoutWrapper>} />
       ))}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
