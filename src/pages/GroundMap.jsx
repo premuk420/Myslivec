@@ -77,7 +77,6 @@ export default function GroundMap() {
     enabled: !!groundId,
   });
 
-  // Načtení členů pro jména
   const { data: members = [] } = useQuery({
     queryKey: ["groundMembers", groundId],
     queryFn: () => base44.entities.GroundMember.filter({ ground_id: groundId }),
@@ -103,10 +102,7 @@ export default function GroundMap() {
         if (!data.start_time || !data.end_time) {
             throw new Error("Chybí povinné údaje (čas).");
         }
-
-        // Oddělíme 'date', protože ho do DB neposíláme
         const { date, ...dataToSave } = data;
-
         console.log("Odesílám rezervaci:", dataToSave);
 
         return base44.entities.Reservation.create({ 
@@ -226,8 +222,10 @@ export default function GroundMap() {
         </MapContainer>
       </div>
 
-      {/* 3. Spodní Menu */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-auto max-w-[95%]">
+      {/* 3. Spodní Menu - S ANIMACÍ A SCHOVÁVÁNÍM */}
+      <div 
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-auto max-w-[95%] transition-all duration-500 ease-in-out ${sheetOpen ? "translate-y-[200%] opacity-0" : "translate-y-0 opacity-100"}`}
+      >
          {mapMode === "view" ? (
              <div className="bg-white/95 backdrop-blur shadow-xl border rounded-full p-1.5 flex gap-1 overflow-x-auto no-scrollbar">
                 <Button variant="ghost" className="rounded-full px-3 gap-2 shrink-0" onClick={() => { setSheetMode("info"); setSheetOpen(true); }}>
@@ -250,6 +248,7 @@ export default function GroundMap() {
                  <div className="bg-black/70 text-white px-3 py-1 rounded-full text-xs mb-1 backdrop-blur">
                     {mapMode === "addPoint" ? "Klikněte pro vložení bodu" : "Klikněte pro výběr místa rezervace"}
                  </div>
+                 {/* Zrušit tlačítko se taky schová, pokud se otevře sheet (např. po kliku na mapu) */}
                  <Button variant="destructive" className="rounded-full shadow-xl px-6" onClick={() => setMapMode("view")}>Zrušit</Button>
              </div>
          )}
@@ -315,18 +314,15 @@ export default function GroundMap() {
                 </>
             )}
 
-            {/* SEZNAM REZERVACÍ (POUŽITÍ RESERVATION CARD) */}
+            {/* SEZNAM REZERVACÍ */}
             {sheetMode === "list" && (
                  <>
                     <SheetHeader><SheetTitle>Přehled rezervací</SheetTitle><SheetDescription>Všechny aktivní rezervace v revíru</SheetDescription></SheetHeader>
                     <div className="mt-4 space-y-2">
                         {reservations.length === 0 ? <p className="text-center text-gray-500 py-4">Žádné aktivní rezervace</p> : 
                             reservations.map(res => {
-                                // Najdeme název bodu
                                 const pointName = mapPoints.find(p => p.id === res.map_point_id)?.name;
-                                // Najdeme jméno
                                 const userName = members.find(m => m.user_id === res.user_id)?.email || "Neznámý lovec";
-                                // Můžu zrušit?
                                 const canCancel = isAdmin || res.user_id === user?.id;
 
                                 return (

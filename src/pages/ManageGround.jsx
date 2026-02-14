@@ -9,8 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { ChevronLeft, Save, Trash2, Copy, Users } from "lucide-react";
-import { MapContainer, TileLayer, Polygon, Marker, Popup } from "react-leaflet"; // Přidán Marker a Popup
-import { getMapPointIcon } from "@/components/hunting/MapPointIcon"; // Přidán import ikon
+import { MapContainer, TileLayer, Polygon, Marker, Popup } from "react-leaflet"; // Přidán Marker, Popup
+import { getMapPointIcon, getTypeLabel } from "@/components/hunting/MapPointIcon"; // Přidán import ikon
 import InviteMemberDialog from "@/components/hunting/InviteMemberDialog";
 import { useAuth } from "@/lib/AuthContext";
 import "leaflet/dist/leaflet.css";
@@ -23,7 +23,7 @@ export default function ManageGround() {
   
   const [ground, setGround] = useState(null);
   const [members, setMembers] = useState([]);
-  const [mapPoints, setMapPoints] = useState([]); // Stav pro body
+  const [mapPoints, setMapPoints] = useState([]); // Nový stav pro body
   const [loading, setLoading] = useState(true);
   
   const [name, setName] = useState("");
@@ -36,7 +36,7 @@ export default function ManageGround() {
   const loadData = async () => {
     try {
       setLoading(true);
-      // 1. Honitba
+      // 1. Načtení honitby
       const gData = await base44.entities.HuntingGround.get(id);
       if (!gData) throw new Error("Honitba nenalezena");
       
@@ -44,11 +44,11 @@ export default function ManageGround() {
       setName(gData.name);
       setDesc(gData.description || "");
 
-      // 2. Členové
+      // 2. Načtení členů
       const mData = await base44.entities.GroundMember.filter({ ground_id: id });
       setMembers(mData);
 
-      // 3. Body na mapě (PŘIDÁNO)
+      // 3. Načtení bodů (PŘIDÁNO)
       const allPoints = await base44.entities.MapPoint.list();
       const pData = allPoints.filter(p => p.ground_id === id);
       setMapPoints(pData);
@@ -111,7 +111,7 @@ export default function ManageGround() {
                 <TabsTrigger value="danger" className="text-red-600">Smazat</TabsTrigger>
             </TabsList>
 
-            {/* ZÁLOŽKA: NASTAVENÍ */}
+            {/* --- ZÁLOŽKA: NASTAVENÍ --- */}
             <TabsContent value="general" className="space-y-4 mt-4">
                 <Card>
                     <CardHeader><CardTitle>Informace</CardTitle></CardHeader>
@@ -122,9 +122,9 @@ export default function ManageGround() {
                     </CardContent>
                 </Card>
                 
-                {/* MAPA S IKONAMI */}
+                {/* MAPA S BODY */}
                 <Card>
-                    <CardHeader><CardTitle>Mapa revíru a body</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>Mapa revíru</CardTitle></CardHeader>
                     <CardContent>
                         <div className="h-[400px] rounded-md overflow-hidden border border-gray-200 relative z-0">
                              <MapContainer center={center} zoom={13} className="h-full w-full" zoomControl={false} dragging={true}>
@@ -135,29 +135,32 @@ export default function ManageGround() {
                                     <Polygon positions={boundaryPoints} pathOptions={{ color: "#2D5016", weight: 2, fillOpacity: 0.1 }} />
                                 )}
 
-                                {/* Body (Posedy, atd.) */}
+                                {/* VYKRESLENÍ BODŮ */}
                                 {mapPoints.map((point) => (
                                     <Marker 
                                         key={point.id} 
                                         position={[point.lat, point.lng]}
-                                        icon={getMapPointIcon(point.type, point.name, false)} // false = není rezervováno (zde neřešíme)
+                                        icon={getMapPointIcon(point.type, point.name, false)} // false = zobrazit jako volné (zelené)
                                     >
                                         <Popup>
-                                            <strong>{point.name}</strong><br/>
-                                            {point.type}
+                                            <div className="text-center">
+                                                <strong>{point.name}</strong>
+                                                <br/>
+                                                <span className="text-xs text-gray-500">{getTypeLabel(point.type)}</span>
+                                            </div>
                                         </Popup>
                                     </Marker>
                                 ))}
                              </MapContainer>
                         </div>
                         <p className="text-xs text-gray-500 mt-2">
-                            Tip: Pro přidání nebo úpravu bodů jděte na hlavní mapu. Zde je pouze náhled.
+                            Poznámka: Zde vidíte přehled všech bodů. Pro přidávání nebo mazání bodů použijte hlavní mapu.
                         </p>
                     </CardContent>
                 </Card>
             </TabsContent>
 
-            {/* ZÁLOŽKA: ČLENOVÉ */}
+            {/* --- ZÁLOŽKA: ČLENOVÉ --- */}
             <TabsContent value="members" className="mt-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -184,7 +187,7 @@ export default function ManageGround() {
                 </Card>
             </TabsContent>
 
-            {/* ZÁLOŽKA: SMAZAT */}
+            {/* --- ZÁLOŽKA: SMAZAT --- */}
             <TabsContent value="danger" className="mt-4">
                 <Card className="border-red-200 bg-red-50">
                     <CardHeader>
