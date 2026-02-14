@@ -6,9 +6,9 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Bezpečnostní kontrola - vypíše chybu do konzole, pokud klíče chybí
+// Bezpečnostní kontrola
 if (!supabaseUrl || !supabaseKey) {
-  console.error("CHYBA: Nenalezeny Supabase klíče v .env souboru! Zkontrolujte název proměnných.");
+  console.error("CHYBA: Nenalezeny Supabase klíče v .env souboru!");
 }
 
 // 2. Vytvoření klienta
@@ -29,6 +29,20 @@ class EntityHandler {
     return data || [];
   }
 
+  // === TUTO FUNKCI JSME PŘIDALI ===
+  // Získání jednoho záznamu podle ID
+  async get(id) {
+    const { data, error } = await supabase
+      .from(this.tableName)
+      .select('*')
+      .eq('id', id)
+      .maybeSingle(); // maybeSingle je bezpečnější než single (nehází 406)
+      
+    if (error) throw error;
+    return data;
+  }
+  // ================================
+
   // Filtrace
   async filter(criteria) {
     let query = supabase.from(this.tableName).select('*');
@@ -42,16 +56,14 @@ class EntityHandler {
     return data || [];
   }
 
-  // Vytvoření záznamu (OPRAVENO: Odstraněno .single())
+  // Vytvoření záznamu
   async create(itemData) {
     const { data, error } = await supabase
       .from(this.tableName)
       .insert([itemData])
-      .select(); // Tady vracíme pole, ne .single(), aby to nepadalo na konfliktech
+      .select();
       
     if (error) throw error;
-    
-    // Vrátíme první položku z pole, nebo null
     return data && data.length > 0 ? data[0] : null;
   }
 
@@ -61,7 +73,7 @@ class EntityHandler {
       .from(this.tableName)
       .update(itemData)
       .eq('id', id)
-      .select(); // Taky raději bez .single() pro jistotu
+      .select();
 
     if (error) throw error;
     return data && data.length > 0 ? data[0] : null;
@@ -80,18 +92,16 @@ class EntityHandler {
 
 // 4. Mapování na strukturu aplikace
 export const base44 = {
-  // Autentizace přes Supabase
   auth: {
     me: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
       
-      // Získáme i profil
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .maybeSingle(); // maybeSingle nehodí chybu, když profil neexistuje
+        .maybeSingle();
         
       return { ...user, ...profile };
     },
@@ -117,14 +127,10 @@ export const base44 = {
     }
   },
   
-  // Dummy funkce pro logování (aby nepadal NavigationTracker)
   appLogs: {
-    logUserInApp: async () => {
-      return { success: true };
-    }
+    logUserInApp: async () => { return { success: true }; }
   },
   
-  // Entity
   entities: {
     HuntingGround: new EntityHandler('hunting_grounds'),
     GroundMember: new EntityHandler('ground_members'),
