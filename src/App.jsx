@@ -19,11 +19,8 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
   
-  // Zjistíme, jestli jsme zrovna na stránce Login
-  // (Ošetřujeme malá/velká písmena pro jistotu)
   const isLoginPage = window.location.pathname.toLowerCase() === '/login';
 
-  // 1. Loading spinner
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -32,24 +29,42 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // 2. Chyby přihlášení - ALE POUZE POKUD NEJSME NA LOGINU
   if (authError && !isLoginPage) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
       navigateToLogin();
-      return null; // Tady to dřív skončilo bílou obrazovkou
+      return null;
     }
   }
 
-  // 3. Vykreslení aplikace
+  // Komponenty pro mapu a správu si vytáhneme z konfigurace
+  const GroundMapPage = Pages["GroundMap"];
+  const ManageGroundPage = Pages["ManageGround"];
+
   return (
     <Routes>
+      {/* Hlavní stránka */}
       <Route path="/" element={
         <LayoutWrapper currentPageName={mainPageKey}>
           <MainPage />
         </LayoutWrapper>
       } />
+
+      {/* SPECIÁLNÍ TRASY PRO MAPU A SPRÁVU (s ID v URL) */}
+      <Route path="/map/:id" element={
+        <LayoutWrapper currentPageName="GroundMap">
+          <GroundMapPage />
+        </LayoutWrapper>
+      } />
+      
+      <Route path="/manage/:id" element={
+        <LayoutWrapper currentPageName="ManageGround">
+          <ManageGroundPage />
+        </LayoutWrapper>
+      } />
+
+      {/* Ostatní automatické stránky */}
       {Object.entries(Pages).map(([path, Page]) => (
         <Route
           key={path}
