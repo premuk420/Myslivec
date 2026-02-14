@@ -1,14 +1,20 @@
 /// <reference types="vite/client" />
 
 import { createClient } from '@supabase/supabase-js';
-// Načtení klíčů z .env souboru
+
+// 1. Načtení klíčů z .env souboru
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Vytvoření klienta
+// Bezpečnostní kontrola - vypíše chybu do konzole, pokud klíče chybí
+if (!supabaseUrl || !supabaseKey) {
+  console.error("CHYBA: Nenalezeny Supabase klíče v .env souboru! Zkontrolujte název proměnných.");
+}
+
+// 2. Vytvoření klienta
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Pomocná třída pro práci s tabulkami
+// 3. Pomocná třída pro práci s tabulkami
 class EntityHandler {
   constructor(tableName) {
     this.tableName = tableName;
@@ -20,10 +26,10 @@ class EntityHandler {
       .from(this.tableName)
       .select('*');
     if (error) throw error;
-    return data;
+    return data || [];
   }
 
-  // Filtrace (např. body jen pro jednu honitbu)
+  // Filtrace
   async filter(criteria) {
     let query = supabase.from(this.tableName).select('*');
     
@@ -33,26 +39,21 @@ class EntityHandler {
     
     const { data, error } = await query;
     if (error) throw error;
-    return data;
+    return data || [];
   }
 
-  // Vytvoření záznamu
-create: async (itemData) => {
-  // 1. Zkusíme data vložit
-  const { data, error } = await supabase
-    .from('hunting_grounds')
-    .insert([itemData])
-    .select(); // DŮLEŽITÉ: Smazal jsem .single(), které často zlobí
-
-  // 2. Pokud je chyba, vyhodíme ji
-  if (error) {
-    console.error("Supabase Error:", error);
-    throw error;
+  // Vytvoření záznamu (OPRAVENO: Odstraněno .single())
+  async create(itemData) {
+    const { data, error } = await supabase
+      .from(this.tableName)
+      .insert([itemData])
+      .select(); // Tady vracíme pole, ne .single(), aby to nepadalo na konfliktech
+      
+    if (error) throw error;
+    
+    // Vrátíme první položku z pole, nebo null
+    return data && data.length > 0 ? data[0] : null;
   }
-
-  // 3. Pokud se vrátilo pole, vezmeme první prvek, jinak vrátíme null (ale nechybujeme)
-  return data && data.length > 0 ? data[0] : null;
-},
 
   // Aktualizace
   async update(id, itemData) {
@@ -60,11 +61,10 @@ create: async (itemData) => {
       .from(this.tableName)
       .update(itemData)
       .eq('id', id)
-      .select()
-      .single();
+      .select(); // Taky raději bez .single() pro jistotu
 
     if (error) throw error;
-    return data;
+    return data && data.length > 0 ? data[0] : null;
   }
 
   // Mazání
@@ -78,7 +78,7 @@ create: async (itemData) => {
   }
 }
 
-// Mapování na strukturu, kterou používá vaše aplikace
+// 4. Mapování na strukturu aplikace
 export const base44 = {
   // Autentizace přes Supabase
   auth: {
@@ -86,12 +86,12 @@ export const base44 = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
       
-      // Dotaz na náš profil pro získání jména
+      // Získáme i profil
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle(); // maybeSingle nehodí chybu, když profil neexistuje
         
       return { ...user, ...profile };
     },
@@ -100,27 +100,30 @@ export const base44 = {
       window.location.reload();
     },
     signIn: async (email, password) => {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return data;
     },
     signUp: async (email, password, fullName) => {
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: { full_name: fullName } // Toto se zkopíruje triggerem do profiles
-            }
-        });
-        if (error) throw error;
-        return data;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName }
+        }
+      });
+      if (error) throw error;
+      return data;
     }
   },
+  
+  // Dummy funkce pro logování (aby nepadal NavigationTracker)
   appLogs: {
     logUserInApp: async () => {
-      return { success: true }; // Tato funkce teď nic nedělá, ale už neshodí aplikaci
+      return { success: true };
     }
   },
+  
   // Entity
   entities: {
     HuntingGround: new EntityHandler('hunting_grounds'),
