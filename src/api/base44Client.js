@@ -37,17 +37,22 @@ class EntityHandler {
   }
 
   // Vytvoření záznamu
-  async create(itemData) {
-    // Supabase vrací pole, my chceme jeden objekt
-    const { data, error } = await supabase
-      .from(this.tableName)
-      .insert([itemData])
-      .select()
-      .single(); 
-      
-    if (error) throw error;
-    return data;
+create: async (itemData) => {
+  // 1. Zkusíme data vložit
+  const { data, error } = await supabase
+    .from('hunting_grounds')
+    .insert([itemData])
+    .select(); // DŮLEŽITÉ: Smazal jsem .single(), které často zlobí
+
+  // 2. Pokud je chyba, vyhodíme ji
+  if (error) {
+    console.error("Supabase Error:", error);
+    throw error;
   }
+
+  // 3. Pokud se vrátilo pole, vezmeme první prvek, jinak vrátíme null (ale nechybujeme)
+  return data && data.length > 0 ? data[0] : null;
+},
 
   // Aktualizace
   async update(id, itemData) {
