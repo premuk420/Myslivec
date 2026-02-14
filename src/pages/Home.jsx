@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "../utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TreePine, Plus, LogIn, Copy, Check, Loader2 } from "lucide-react";
+import { TreePine, Plus, LogIn, Loader2 } from "lucide-react";
 import GroundCard from "../components/hunting/GroundCard";
 import CreateGroundWizard from "../components/hunting/CreateGroundWizard";
 
@@ -30,9 +27,10 @@ export default function Home() {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
+  // 1. OPRAVA: user_email -> email
   const { data: memberships = [], isLoading: membershipsLoading } = useQuery({
     queryKey: ["memberships", user?.email],
-    queryFn: () => base44.entities.GroundMember.filter({ user_email: user.email, status: "active" }),
+    queryFn: () => base44.entities.GroundMember.filter({ email: user.email, status: "active" }),
     enabled: !!user?.email,
   });
 
@@ -64,16 +62,23 @@ export default function Home() {
     enabled: grounds.length > 0,
   });
 
+  // 2. OPRAVA: Mutation pro vytvoření honitby a člena
   const createMutation = useMutation({
     mutationFn: async (groundData) => {
+      // a) Vytvoříme honitbu (to už fungovalo)
       const ground = await base44.entities.HuntingGround.create(groundData);
+      
+      // b) Vytvoříme admin členství (TADY BYLA CHYBA)
+      // Musíme použít správné názvy sloupců podle SQL tabulky ground_members
       await base44.entities.GroundMember.create({
-        user_email: user.email,
-        user_name: user.full_name || user.email,
+        email: user.email,      // Bylo user_email (špatně) -> nyní email (správně)
+        user_id: user.id,       // Přidáno: Propojíme to s ID uživatele
         ground_id: ground.id,
         role: "admin",
         status: "active",
       });
+      // user_name jsme smazali, protože v tabulce není
+      
       return ground;
     },
     onSuccess: () => {
@@ -83,21 +88,24 @@ export default function Home() {
     },
   });
 
+  // 3. OPRAVA: Mutation pro připojení (Join)
   const joinMutation = useMutation({
     mutationFn: async () => {
       const allG = await base44.entities.HuntingGround.list();
       const found = allG.find((g) => g.invite_code === joinCode.trim().toUpperCase());
       if (!found) throw new Error("Neplatný kód");
 
+      // Kontrola existence (opraveno user_email -> email)
       const existingMemberships = await base44.entities.GroundMember.filter({
-        user_email: user.email,
+        email: user.email,
         ground_id: found.id,
       });
       if (existingMemberships.length > 0) throw new Error("Již jste členem této honitby");
 
+      // Vytvoření členství (opraveno user_email -> email a přidáno user_id)
       await base44.entities.GroundMember.create({
-        user_email: user.email,
-        user_name: user.full_name || user.email,
+        email: user.email,
+        user_id: user.id,
         ground_id: found.id,
         role: "member",
         status: "active",
@@ -226,8 +234,8 @@ export default function Home() {
       {/* Wizard */}
       {wizardOpen && (
         <CreateGroundWizard
-          // ZMĚNA: Používáme mutateAsync, abychom počkali na dokončení uložení
-          // Tím se zajistí, že Wizard nezavře okno dřív, než se vytvoří členství
+          // 4. OPRAVA: Použití mutateAsync!
+          // Díky await Wizard počká, dokud createMutation neskončí (nebo nespadne)
           onComplete={async (data) => {
              await createMutation.mutateAsync(data);
           }}
